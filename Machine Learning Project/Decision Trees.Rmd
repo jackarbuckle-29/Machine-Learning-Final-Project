@@ -1,0 +1,103 @@
+---
+title: "Decision Trees"
+author: "Ben Scartz"
+date: "2023-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load and partition data into test and train
+```{r}
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],38)
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+
+
+wr_train_rows <- sample(1:dim(wr_data)[1],64)
+wr_train <- wr_data[wr_train_rows,]
+wr_test <- wr_data[-wr_train_rows,]
+
+rb_train_rows <- sample(1:dim(rb_data)[1],37)
+rb_train <- rb_data[rb_train_rows,]
+rb_test <- rb_data[-rb_train_rows,]
+
+
+```
+
+Decision Trees
+```{r warning=FALSE}
+library(ggplot2)
+library(rpart)
+library(rattle)				
+library(rpart.plot)				
+library(RColorBrewer)				
+library(party)				
+library(partykit)			
+library(caret)	
+library(reshape2) 
+library(DMwR)
+library(splitstackshape) 
+```
+
+
+```{r}
+qb_train <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs"))
+```
+
+
+```{r}
+qb_tree <- rpart(aav ~., 
+data = qb_train,
+control = rpart.control(mindepth = 5))
+ fancyRpartPlot(qb_tree)
+
+```
+
+```{r}
+plotcp(qb_tree)
+printcp(qb_tree) 
+```
+```{r}
+qb_tree
+```
+
+RB Models
+
+```{r}
+rb_train <- rb_train %>%
+ select(c("aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa"))
+  
+```
+
+
+```{r}
+rbtree <- rpart(aav ~., 
+data = rb_train)
+par(xpd = NA) 
+plot(rbtree)
+text(rbtree, digits = 3) 
+fancyRpartPlot(rbtree)
+```
+
+
+```{r}
+fancyRpartPlot(rbtree)
+
+plotcp(rbtree)
+printcp(rbtree) 
+```
+
+

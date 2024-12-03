@@ -1,0 +1,100 @@
+---
+title: "Data_Creation"
+author: "Ian Pezzella, Jack Arbuckle, Reuben Dayal, Ben Scartz, David Sobek"
+date: "2023-09-27"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE}
+#install.packages('nflfastR')
+#install.packages("gsisdecoder")
+library(nflfastR)
+library(gsisdecoder)
+library(tidyverse)
+library(stringr)
+```
+
+Load contracts data and combine with stats from previous season
+
+```{r}
+load("contracts.rda")
+names(data)[1:9] <- c("rank", "name", "age" , "years", "value", "aav", "sign_bonus", "gtd", "prac_gtd")
+contracts <- data
+contracts$start_year <- str_extract(contracts$length, '^\\d{4}')
+
+pbp <- nflfastR::load_pbp(2022)
+
+temp <- calculate_player_stats(pbp, weekly = FALSE)
+
+temp$next_season <- 2022 + 1
+
+summary_stats <- as.data.frame(temp)
+
+joined_data <- merge(contracts, summary_stats, by.x = c("name", "start_year"),
+                     by.y = c("player_display_name", "next_season"))
+
+joined_data2 <-data.frame()
+
+for (year in c(2021,2019,2018,2017)) {
+  pbp <- nflfastR::load_pbp(year)
+
+temp <- calculate_player_stats(pbp, weekly = FALSE)
+
+temp$next_season <- year + 1
+
+summary_stats <- as.data.frame(temp)
+
+joined_data1 <- merge(contracts, summary_stats, by.x = c("name", "start_year"),
+                     by.y = c("player_display_name", "next_season"))
+
+joined_data2 <- rbind(joined_data2, joined_data1)
+
+}
+
+joined_data <- rbind(joined_data, joined_data2)
+  
+joined_data <- joined_data %>% 
+  select(-c('rank','player_name','position.x','position_group','headshot_url','player_id'))
+
+joined_data$sign_bonus <- as.numeric(gsub('-',NA, joined_data$sign_bonus))
+```
+
+Calculate Summary Statistics
+
+```{r}
+summary(joined_data %>%
+          select(-c('name','position.y','length','recent_team','start_year')))
+```
+Separate data by position
+
+```{r}
+qb_data <- joined_data %>%
+filter(position.y == 'QB')
+
+rb_data <- joined_data %>%
+filter(position.y == 'RB')
+
+wr_data <- joined_data %>%
+filter(position.y == 'WR')
+
+```
+
+Export data to drive for easy access
+
+```{r}
+write.csv(qb_data, file = 'qb_data.csv')
+write.csv(rb_data, file = 'rb_data.csv')
+write.csv(wr_data, file = 'wr_data.csv')
+```
+
+
+
+
+
+
+

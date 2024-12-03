@@ -1,0 +1,174 @@
+---
+title: "Multiple Linear Regression"
+author: "Ian Pezzella, Jack Arbuckle, Reuben Dayal, Ben Scartz, David Sobek"
+date: "2023-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load and partition data into test and train
+```{r}
+library(tidyverse)
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],38)
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+
+wr_train_rows <- sample(1:dim(wr_data)[1],64)
+wr_train <- wr_data[wr_train_rows,]
+wr_test <- wr_data[-wr_train_rows,]
+
+rb_train_rows <- sample(1:dim(rb_data)[1],37)
+rb_train <- rb_data[rb_train_rows,]
+rb_test <- rb_data[-rb_train_rows,]
+```
+
+Linear Regression with variable selection
+QB
+```{r}
+
+library(leaps)
+
+#select all statistics relevant to the position
+qb_train2 <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa", "passing_air_yards",
+              "dakota","pacr", "rushing_epa", "age","rushing_yards",
+              "fantasy_points", "sacks", "sack_fumbles_lost", "games",
+              "interceptions", "sack_yards", "passing_first_downs"))
+
+#apply exhaustive search to select variables
+dim(qb_train2)[2]
+search <- regsubsets(aav ~ ., data = qb_train2, nvmax = dim(qb_train2)[2],method = "exhaustive")
+sum <- summary(search)
+sum
+# show models
+sum$which
+
+# show metrics
+sum$adjr2
+Adjr2=which.max(sum$adjr2)
+Adjr2
+
+#apply chosen variables to linear model
+qb.exhaust <- lm(aav~ passing_tds + passing_epa +
+              fantasy_points + sacks + sack_fumbles_lost +
+              interceptions + sack_yards + passing_first_downs, data = qb_train2, na.action = na.exclude)
+
+# predict based on linear model and assess accuracy
+library(forecast)
+qb.exhaust.pred <- predict(qb.exhaust, newdata = qb_test, na.action = na.pass)
+accuracy(qb.exhaust.pred, qb_test$aav)
+qb <- data.frame(qb.exhaust.pred, qb_test$aav)
+
+#visualize predicted vs actual values
+ggplot(data = qb, aes(x = qb_test.aav, y = qb.exhaust.pred)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Linear Regression Accuracy - QB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 20000000, y = 60000000, 
+           label = "MAE = $8.61M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+WR 
+```{r}
+library(leaps)
+
+wr_train2 <- wr_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr"))
+  
+  
+  #select(-c( "name","start_year","length","position.y","recent_team","sign_bonus","value", "gtd","years","prac_gtd"))
+
+dim(wr_train2)[2]
+search <- regsubsets(aav ~ ., data = wr_train2, nvmax = dim(wr_train2)[2],method = "exhaustive")
+sum <- summary(search)
+sum
+# show models
+sum$which
+
+# show metrics
+
+sum$adjr2
+Adjr2=which.max(sum$adjr2)
+Adjr2
+
+library(forecast)
+wr.exhaust <- lm(aav~ games + receiving_air_yards + receiving_yards_after_catch + racr, data = wr_train2, na.action = na.exclude)
+
+
+wr.exhaust.pred <- predict(wr.exhaust, newdata = wr_test, na.action = na.pass)
+accuracy(wr.exhaust.pred, wr_test$aav)
+
+wr <- data.frame(wr.exhaust.pred, wr_test$aav)
+
+ggplot(data = wr, aes(x = wr_test.aav, y = wr.exhaust.pred)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Linear Regression Accuracy - WR',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 15000000, y = 30000000, 
+           label = "MAE = $2.37M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+
+```{r}
+library(leaps)
+rb_train2 <- rb_train %>%
+ select(c( "name","aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa"))
+  
+  
+  #select(-c( "name","start_year","length","position.y","recent_team","sign_bonus","value", "gtd","years","prac_gtd"))
+
+dim(rb_train2)[2]
+search <- regsubsets(aav ~ .-name, data = rb_train2, nvmax = dim(rb_train2)[2],method = "exhaustive")
+sum <- summary(search)
+sum
+# show models
+sum$which
+
+# show metrics
+
+sum$adjr2
+Adjr2=which.max(sum$adjr2)
+Adjr2
+
+library(forecast)
+rb.exhaust <- lm(aav~ games + receiving_air_yards + receiving_yards_after_catch + racr + receiving_tds + rushing_tds + rushing_yards + receiving_epa, data = rb_train2, na.action = na.exclude)
+
+
+rb.exhaust.pred <- predict(rb.exhaust, newdata = rb_test, na.action = na.pass)
+accuracy(rb.exhaust.pred, rb_test$aav)
+
+rb <- data.frame(rb.exhaust.pred, rb_test$aav)
+
+ggplot(data = rb, aes(x = rb_test.aav, y = rb.exhaust.pred)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Linear Regression Accuracy - RB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 8000000, y = 30000000, 
+           label = "MAE = $1.93M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+

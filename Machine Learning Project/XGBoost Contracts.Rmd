@@ -1,0 +1,239 @@
+---
+title: XGBoost Contracts
+author: "Ian Pezzella, Jack Arbuckle, Reuben Dayal, Ben Scartz, David Sobek"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(xgboost) # Load XGBoost
+library(caret) # Load Caret
+library(ggplot2) # Load ggplot2
+#library(xgboostExplainer) # Load XGboost Explainer
+library(pROC) # Load proc
+library(SHAPforxgboost) # Load shap for XGBoost
+library(data.table)
+library(tidyverse)
+library(forecast)
+```
+
+Load and partition data into test and train
+```{r}
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],38) 
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+
+
+wr_train_rows <- sample(1:dim(wr_data)[1],64)
+wr_train <- wr_data[wr_train_rows,]
+wr_test <- wr_data[-wr_train_rows,]
+
+rb_train_rows <- sample(1:dim(rb_data)[1],37)
+rb_train <- rb_data[rb_train_rows,]
+rb_test <- rb_data[-rb_train_rows,]
+```
+
+
+Select relevant variables and remove NAs
+```{r}
+qb_train2 <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+qb_test2 <- qb_test %>%
+   select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+wr_train2 <- wr_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+wr_test2 <- wr_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+
+rb_train2 <- rb_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+
+rb_test2 <- rb_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+
+#check for emaining NAs
+sum(is.na(qb_train2)) 
+sum(is.na(qb_test2))
+
+sum(is.na(wr_train2)) 
+sum(is.na(wr_test2))
+
+sum(is.na(rb_train2)) 
+sum(is.na(rb_test2))
+```
+
+
+
+XGBoost
+QB
+```{r}
+# Create training matrix
+dtrainqb <- xgb.DMatrix(data = as.matrix(qb_train2), label = qb_train2$aav)
+
+# Create test matrix
+dtestqb <- xgb.DMatrix(data = as.matrix(qb_test2), label = qb_test2$aav)
+```
+
+
+
+```{r warning=TRUE}
+# Base XGBoost Code
+
+
+set.seed(111111)
+bst_qb <- xgboost(data = dtrainqb, # Set training data
+               eta = 0.05,
+               nrounds = 500, # Set number of rounds
+               
+               verbose = 1, # 1 - Prints out fit
+                print_every_n = 20, # Prints out result every 20th iteration
+               
+                # Set objective
+               eval_metric = "error") # Set evaluation metric to use
+```
+
+
+Prediction
+```{r}
+boost_preds_qb <- predict(bst_qb, dtestqb ) # Create predictions for xgboost model
+
+pred_dat <- cbind.data.frame(boost_preds_qb , qb_test2$aav)#
+ 
+accuracy(boost_preds_qb, qb_test2$aav)
+qb_xg <- data.frame(predicted_value = boost_preds_qb, actual_value = qb_test2$aav, percent_error = round((abs(boost_preds_qb-qb_test2$aav)/(qb_test2$aav))*100,2))
+qb_xg
+
+ggplot(data = qb_xg, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'XGBoost Accuracy - QB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 20000000, y = 60000000, 
+           label = "MAE = $0.19M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+
+RB
+```{r}
+# Create training matrix
+dtrainRB <- xgb.DMatrix(data = as.matrix(rb_train2), label = rb_train2$aav)
+
+# Create test matrix
+dtestRB <- xgb.DMatrix(data = as.matrix(rb_test2), label = rb_test2$aav)
+```
+
+```{r}
+set.seed(111111)
+bst_rb <- xgboost(data = dtrainRB, # Set training data
+               eta = 0.05,
+               nrounds = 500, # Set number of rounds
+               
+               verbose = 1, # 1 - Prints out fit
+                print_every_n = 20, # Prints out result every 20th iteration
+               
+                # Set objective
+               eval_metric = "error") # Set evaluation metric to use
+```
+
+
+```{r}
+boost_preds_rb <- predict(bst_rb, dtestRB ) # Create predictions for xgboost model
+
+pred_dat <- cbind.data.frame(boost_preds_rb , rb_test2$aav)#
+
+
+accuracy(boost_preds_rb, rb_test2$aav)
+rb_xg <- data.frame(predicted_value = boost_preds_rb, actual_value = rb_test2$aav, percent_error = round((abs(boost_preds_rb-rb_test2$aav)/(rb_test2$aav))*100,2))
+rb_xg
+
+ggplot(data = rb_xg, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'XGBoost Accuracy - RB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 8000000, y = 30000000, 
+           label = "MAE = $0.51M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+
+
+WR
+```{r}
+# Create training matrix
+dtrainWR <- xgb.DMatrix(data = as.matrix(wr_train2), label = wr_train2$aav)
+
+# Create test matrix
+dtestWR <- xgb.DMatrix(data = as.matrix(wr_test2), label = wr_test2$aav)
+```
+
+```{r}
+set.seed(111111)
+bst_wr <- xgboost(data = dtrainWR, # Set training data
+               eta = 0.05,
+               nrounds = 500, # Set number of rounds
+               
+               verbose = 1, # 1 - Prints out fit
+                print_every_n = 20, # Prints out result every 20th iteration
+               
+                # Set objective
+               eval_metric = "error")
+```
+
+```{r}
+boost_preds_wr <- predict(bst_wr, dtestWR ) # Create predictions for xgboost model
+
+pred_dat <- cbind.data.frame(boost_preds_wr , wr_test2$aav)#
+
+
+accuracy(boost_preds_wr, wr_test2$aav)
+wr_xg <- data.frame(predicted_value = boost_preds_wr, actual_value = wr_test2$aav, percent_error = round((abs(boost_preds_wr-wr_test2$aav)/(wr_test2$aav))*100,2))
+wr_xg
+
+ggplot(data = wr_xg, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'XGBoost Accuracy - WR',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 15000000, y = 30000000, 
+           label = "MAE = $0.19M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+

@@ -1,0 +1,165 @@
+---
+title: "Analysis"
+output: html_document
+date: "2023-09-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages('forecast')
+library(forecast)
+```
+
+
+```{r}
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],35)
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+```
+
+
+# Multiple Linear Regression
+
+
+#### QB
+```{r}
+qb_lm <- lm(aav ~ passing_tds + passing_epa + passing_air_yards +
+              dakota + pacr + rushing_epa + age + rushing_yards +
+              fantasy_points + sacks + sack_fumbles_lost + games +
+              interceptions + sack_yards + passing_first_downs, data = qb_train)
+
+summary(qb_lm)
+```
+```{r}
+qb_lm_pred <- predict(qb_lm, newdata = qb_test)
+
+qb_df <- data.frame(qb_test$name, qb_lm_pred, qb_test$aav)
+
+qb_df
+
+
+
+```
+
+```{r}
+accuracy(qb_lm_pred, qb_test$aav)
+```
+Linear Regression
+```{r}
+
+library(leaps)
+qb_train2 <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa", "passing_air_yards",
+              "dakota","pacr", "rushing_epa", "age","rushing_yards",
+              "fantasy_points", "sacks", "sack_fumbles_lost", "games",
+              "interceptions", "sack_yards", "passing_first_downs"))
+  
+  
+  #select(-c( "name","start_year","length","position.y","recent_team","sign_bonus","value", "gtd","years","prac_gtd"))
+
+dim(qb_train2)[2]
+search <- regsubsets(aav ~ ., data = qb_train2, nvmax = dim(qb_train2)[2],method = "exhaustive")
+sum <- summary(search)
+sum
+# show models
+sum$which
+
+# show metrics
+
+sum$adjr2
+Adjr2=which.max(sum$adjr2) #find how many variables needed to get max adjusted r2
+Adjr2
+#List out the predictors should be included in the model?
+```
+
+```{r}
+library(forecast)
+qb.exhaust <- lm(aav~ passing_tds + passing_epa +
+              fantasy_points + sacks + sack_fumbles_lost +
+              interceptions + sack_yards + passing_first_downs, data = qb_train2, na.action = na.exclude)
+
+
+qb.exhaust.pred <- predict(qb.exhaust, newdata = qb_test, na.action = na.pass)
+accuracy(qb.exhaust.pred, qb_test$aav)
+```
+Lasso 
+```{r}
+# install.packages("glmnet")
+# install.packages("ggplot2")
+# install.packages("naniar")
+# install.packages("OneR")
+# install.packages("mice")
+# install.packages("plotmo")
+library(glmnet) # Load glmnet for lasso
+library(ggplot2) # Load ggplot2 for visualizations
+library(naniar) # Load nanair for missing data visualization
+library(OneR) # Load OneR for binning function
+library(mice) # Load mice for missing data inputation
+library(plotmo) # for plot_glmnet for lasso visualization
+```
+
+
+```{r}
+sum(is.na(qb_train2))
+
+# Drop missing values
+qb_train3 <- na.omit(qb_train2)
+# Scale explanatory variables
+qb_vars <- scale(qb_train3[,-1])
+
+sum(is.na(qb_train3))
+```
+
+```{r}
+fit_3 <- glmnet(x = qb_vars, # Fit explanatory variables
+                y = qb_train3$aav, # Fit response variable
+                alpha = 1, # Set alpha as 1 for lasso
+                lambda = 0.5) # Set lambda as 0.5
+```
+
+```{r}
+coef(fit_3)
+```
+Decision Trees
+```{r}
+library(ggplot2)
+library(rpart)				        # Popular decision tree algorithm
+library(rattle)					# Fancy tree plot
+library(rpart.plot)				# Enhanced tree plots
+library(RColorBrewer)				# Color selection for fancy tree plot
+library(party)					# Alternative decision tree algorithm
+library(partykit)				# Convert rpart object to BinaryTree
+library(caret)	
+library(reshape2) # Load reshape 2 for melting
+library(DMwR) # Load data mining with R for SMOTE
+library(splitstackshape) # Used for stratified sampling
+```
+
+```{r}
+tree_1 <- rpart(aav ~., 
+data = qb_train2)
+control = rpart.control(maxsurrogate=10)
+par(xpd = NA) 
+plot(tree_1)  
+text(tree_1, digits = 3) 
+```
+
+```{r}
+fancyRpartPlot(tree_1)
+```
+
+```{r}
+plotcp(tree_1)
+printcp(tree_1) 
+```
+

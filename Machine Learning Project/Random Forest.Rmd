@@ -1,0 +1,177 @@
+---
+title: "Random Forest"
+author: "Ian Pezzella, Jack Arbuckle, Reuben Dayal, Ben Scartz, David Sobek"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r warning=FALSE}
+library(randomForest)
+library(caret)
+library(xgboost)
+library(tidyverse)
+library(xgboost) # Load XGBoost
+library(caret) # Load Caret
+library(ggplot2) # Load ggplot2
+#library(xgboostExplainer) # Load XGboost Explainer
+library(pROC) # Load proc
+library(SHAPforxgboost) # Load shap for XGBoost
+library(data.table)
+library(forecast)
+
+```
+
+Load and partition data into test and train
+```{r}
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],38)
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+
+
+wr_train_rows <- sample(1:dim(wr_data)[1],64)
+wr_train <- wr_data[wr_train_rows,]
+wr_test <- wr_data[-wr_train_rows,]
+
+rb_train_rows <- sample(1:dim(rb_data)[1],37)
+rb_train <- rb_data[rb_train_rows,]
+rb_test <- rb_data[-rb_train_rows,]
+
+```
+```{r}
+qb_train2 <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+qb_test2 <- qb_test %>%
+   select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+wr_train2 <- wr_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+wr_test2 <- wr_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+
+rb_train2 <- rb_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+
+rb_test2 <- rb_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+```
+
+Random Forest Model
+
+QB
+```{r}
+rf_mod_qb <- randomForest(aav ~., # Set tree formula
+                         data = qb_train2, # Set dataset
+                         ntree = 200,
+                         nodesize = 1,
+                         mtry = 2) # Set number of trees to use 
+rf_preds_qb <- predict(rf_mod_qb, qb_test2) # Create predictions for random forest model
+
+```
+
+
+```{r}
+accuracy(rf_preds_qb, qb_test2$aav)
+qb_ran <- data.frame(predicted_value = rf_preds_qb, actual_value = qb_test2$aav, percent_error = round((abs(rf_preds_qb-qb_test2$aav)/(qb_test2$aav))*100,2))
+qb_ran
+
+#visualize predicted vs actual values
+ggplot(data = qb_ran, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Random Forest Accuracy - QB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 20000000, y = 60000000, 
+           label = "MAE = $5.69M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+WR
+```{r}
+rf_mod_wr <- randomForest(aav ~., # Set tree formula
+                         data = wr_train2, # Set dataset
+                         ntree = 200,
+                         nodesize = 1,
+                         mtry = 3) # Set number of trees to use 
+rf_preds_wr <- predict(rf_mod_wr, wr_test2) # Create predictions for random forest model
+
+```
+
+
+```{r}
+accuracy(rf_preds_wr, wr_test2$aav)
+wr_ran <- data.frame(predicted_value = rf_preds_wr, actual_value = wr_test2$aav, percent_error = round((abs(rf_preds_wr-wr_test2$aav)/(wr_test2$aav))*100,2))
+wr_ran
+
+ggplot(data = wr_ran, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Random Forest Accuracy - WR',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 15000000, y = 30000000, 
+           label = "MAE = $2.12M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+
+RB
+```{r}
+rf_mod_rb <- randomForest(aav ~., # Set tree formula
+                         data = rb_train2, # Set dataset
+                         ntree = 200,
+                         nodesize = 1,
+                         mtry = 3) # Set number of trees to use 
+rf_preds_rb <- predict(rf_mod_rb, rb_test2) # Create predictions for random forest model
+
+```
+
+```{r}
+accuracy(rf_preds_rb, rb_test2$aav)
+rb_ran <- data.frame(predicted_value = rf_preds_rb, actual_value = rb_test2$aav, percent_error = round((abs(rf_preds_rb-rb_test2$aav)/(rb_test2$aav))*100,2))
+rb_ran
+
+ggplot(data = rb_ran, aes(x = actual_value, y = predicted_value)) +
+  geom_point(color = 'blue') +
+  geom_smooth(method = 'lm', se = FALSE, color = 'orange') +
+  labs(title = 'Random Forest Accuracy - RB',
+       x = 'Actual AAV',
+       y = 'Predicted AAV') +
+  annotate("text", x = 8000000, y = 30000000, 
+           label = "MAE = $1.72M", size = 5) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+```
+
+
+

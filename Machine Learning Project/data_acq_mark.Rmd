@@ -1,0 +1,102 @@
+---
+title: "Machine Learning Project Data Summary"
+output: html_document
+date: "2023-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE}
+#install.packages('nflfastR')
+#install.packages("gsisdecoder")
+library(nflfastR)
+library(gsisdecoder)
+library(tidyverse)
+library(stringr)
+```
+
+
+```{r}
+load("contracts.rda")
+names(data)[1:9] <- c("rank", "name", "age" , "years", "value", "aav", "sign_bonus", "gtd", "prac_gtd")
+contracts <- data
+contracts$start_year <- str_extract(contracts$length, '^\\d{4}')
+
+pbp_2021 <- nflfastR::load_pbp(2021)
+
+temp1 <- calculate_player_stats(pbp_2021, weekly = FALSE)
+
+temp1$next_season <- 2022
+
+pbp_2022 <- nflfastR::load_pbp(2022)
+
+temp <- calculate_player_stats(pbp_2022, weekly = FALSE)
+
+temp$next_season <- 2023
+
+summary_stats <- rbind.data.frame(temp1, temp)
+
+summary_stats <- as.data.frame(summary_stats)
+
+joined_data <- merge(contracts, summary_stats, by.x = c("name", "start_year"),
+                     by.y = c("player_display_name", "next_season"))
+
+joined_data <- joined_data %>% 
+  select(-c('rank','player_name','position.x','position_group','headshot_url','player_id'))
+joined_data$sign_bonus <- as.numeric(gsub('-',NA, joined_data$sign_bonus))
+
+head(joined_data)
+```
+
+# Calculate Summary Statistics
+```{r}
+summary(joined_data %>%
+          select(-c('name','position.y','length','recent_team','start_year')))
+```
+```{r}
+qb_data <- joined_data %>%
+filter(position.y == 'QB')
+```
+
+
+```{r}
+library(ggplot2)
+```
+
+
+Preliminary Visualizations
+
+```{r}
+# Load the ggplot2 library if it's not already loaded
+library(ggplot2)
+
+# Create the bar chart
+AAV_bar <- ggplot(data = joined_data, aes(x = position.y, y = aav)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Bar Chart of AAV by Position",
+       x = "Position",
+       y = "AAV") +
+  scale_y_continuous(labels = scales::comma_format(scale = 1e-6, suffix = "M"))
+  
+
+# Create the box plot
+# Create the box plot with Y-axis labels in millions
+AAV_box <- ggplot(data = joined_data, aes(x = position.y, y = aav)) +
+  geom_boxplot() +
+  labs(title = "Box Plot of AAV by Position",
+       x = "Position",
+       y = "AAV") +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-6, suffix = "M"))+
+  scale_y_log10()
+
+AAV_box
+AAV_bar
+```
+
+
+
+
+
+

@@ -1,0 +1,176 @@
+---
+title: "Lasso Regression"
+author: "Ian Pezzella, Jack Arbuckle, Reuben Dayal, Ben Scartz, David Sobek"
+date: "2023-10-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r warning=FALSE}
+library(tidyverse)
+```
+
+Load and partition data into test and train
+```{r}
+qb_data <- read.csv('qb_data.csv')
+rb_data <- read.csv('rb_data.csv')
+wr_data <- read.csv('wr_data.csv')
+
+RNGkind(sample.kind = 'Rounding')
+set.seed(111111)
+
+qb_train_rows <- sample(1:dim(qb_data)[1],38) 
+qb_train <- qb_data[qb_train_rows,]
+qb_test <- qb_data[-qb_train_rows,]
+
+
+wr_train_rows <- sample(1:dim(wr_data)[1],64)
+wr_train <- wr_data[wr_train_rows,]
+wr_test <- wr_data[-wr_train_rows,]
+
+rb_train_rows <- sample(1:dim(rb_data)[1],37)
+rb_train <- rb_data[rb_train_rows,]
+rb_test <- rb_data[-rb_train_rows,]
+
+
+```
+
+```{r}
+qb_train2 <- qb_train %>%
+ select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+qb_test2 <- qb_test %>%
+   select(c( "aav","passing_tds", "passing_epa",
+              "fantasy_points", "sacks", "sack_fumbles_lost",
+              "interceptions", "sack_yards", "passing_first_downs")) %>%
+  na.omit()
+
+wr_train2 <- wr_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+wr_test2 <- wr_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr")) %>%
+  na.omit()
+
+
+rb_train2 <- rb_train %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+
+rb_test2 <- rb_test %>%
+ select(c( "aav","games", "receptions", "targets", "receiving_yards", "receiving_tds", "receiving_air_yards", "receiving_yards_after_catch", "receiving_epa", "racr", "rushing_yards", "rushing_tds", "rushing_epa")) %>%
+  na.omit()
+```
+
+
+```{r}
+qb.lm_1 <- lm(aav~., data = qb_train2, na.action = na.pass)
+summary(qb.lm_1)
+```
+
+Lasso 
+```{r}
+# install.packages("glmnet")
+# install.packages("ggplot2")
+# install.packages("naniar")
+# install.packages("OneR")
+# install.packages("mice")
+# install.packages("plotmo")
+library(glmnet) # Load glmnet for lasso
+library(ggplot2) # Load ggplot2 for visualizations
+library(naniar) # Load nanair for missing data visualization
+library(OneR) # Load OneR for binning function
+library(mice) # Load mice for missing data inputation
+library(plotmo) # for plot_glmnet for lasso visualization
+```
+
+#QB
+```{r}
+# Scale explanatory variables
+qb_vars <- scale(qb_train2[,-1])
+
+```
+
+```{r}
+fit_qb <- glmnet(x = qb_vars, # Fit explanatory variables
+                y = qb_train2$aav, # Fit response variable
+                alpha = 1, # Set alpha as 1 for lasso
+                lambda = 0.5) # Set lambda as 0.5
+```
+
+```{r}
+coef(fit_qb)
+```
+```{r}
+temp_lm <- coef(qb.lm_1) # Extract coefficients from linear model
+temp_lasso <- as.vector(coef(fit_qb)) # Extract coefficients from lasso model
+cbind.data.frame(temp_lm, temp_lasso) # Join coefficients together
+```
+
+
+###### WR MODEL ########
+```{r}
+wr.lm_1 <- lm(aav~., data = wr_train2, na.action = na.pass)
+summary(wr.lm_1)
+```
+
+
+```{r}
+wr_vars <- scale(wr_train2[,-1])
+```
+
+```{r}
+fit_wr <- glmnet(x = wr_vars, # Fit explanatory variables
+                y = wr_train2$aav, # Fit response variable
+                alpha = 1, # Set alpha as 1 for lasso
+                lambda = 0.5) # Set lambda as 0.5
+```
+
+```{r}
+coef(fit_wr)
+```
+
+```{r}
+temp_lm1 <- coef(wr.lm_1) # Extract coefficients from linear model
+temp_lasso2 <- as.vector(coef(fit_wr)) # Extract coefficients from lasso model
+wr.df <- cbind.data.frame(temp_lm1, temp_lasso2)# Join coefficients together
+
+wr.df
+
+```
+######## RB MODEL ########
+```{r}
+rb.lm_1 <- lm(aav~., data = rb_train2, na.action = na.pass)
+summary(rb.lm_1)
+```
+
+```{r}
+rb_vars <- scale(rb_train2[,-1])
+```
+
+```{r}
+fit_rb <- glmnet(x = rb_vars, # Fit explanatory variables
+                y = rb_train2$aav, # Fit response variable
+                alpha = 1, # Set alpha as 1 for lasso
+                lambda = 0.5) # Set lambda as 0.5
+```
+
+```{r}
+coef(fit_rb)
+```
+
+```{r}
+temp_lm2 <- coef(rb.lm_1) # Extract coefficients from linear model
+temp_lasso3 <- as.vector(coef(fit_rb)) # Extract coefficients from lasso model
+rb.df <- cbind.data.frame(temp_lm2, temp_lasso3)# Join coefficients together
+
+rb.df
+```
+
